@@ -1,0 +1,79 @@
+service: api-tts-python
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: python3.8
+  region: us-east-1
+  profile: ${env:PROFILE}  # Insira o nome do seu perfil AWS configurado em um arquivo .env
+  environment:
+    BUCKET_NAME: ${env:BUCKET_NAME} # Insira o nome de um bucket AWS em um arquivo .env
+    DYNAMODB_TABLE: ${env:DYNAMODB_TABLE} # Insira o nome de uma tabela em um arquivo .env
+
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+            - "dynamodb:PutItem"
+            - "dynamodb:GetItem"
+            - "polly:SynthesizeSpeech"  # Permissão para usar Polly
+          Resource:
+            - "arn:aws:s3:::${self:provider.environment.BUCKET_NAME}/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+            - "*"  # Permissão para todos os recursos Polly, necessária para o polly:SynthesizeSpeech
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-python-requirements
+
+functions:
+  tts:
+    handler: handler.tts
+    events:
+      - http:
+          path: v1/tts
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - Authorization
+            allowCredentials: false
+
+resources:
+  Resources:
+    TTSBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.BUCKET_NAME}
+        PublicAccessBlockConfiguration:  # Desativar o bloqueio de acesso público
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
+
+    TTSBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref TTSBucket
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "s3:GetObject"
+              Resource: !Sub "arn:aws:s3:::${TTSBucket}/*"
+
+    TTSTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        AttributeDefinitions:
+          - AttributeName: dynamoapikey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: dynamoapikey
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST

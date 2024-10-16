@@ -1,0 +1,3 @@
+DYNAMODB_TABLE=table-tts
+BUCKET_NAME=bucket-tts
+PROFILE=my-dev-profile
